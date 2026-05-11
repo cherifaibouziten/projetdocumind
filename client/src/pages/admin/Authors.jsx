@@ -37,7 +37,7 @@ export default function AdminAuthors() {
       axios.get('/api/author/pending'),
       axios.get('/api/users'),
     ])
-    if (p.data.success) setPending(p.data.authors)
+    if (p.data.success) setPending(p.data.users)
     if (a.data.success) setAuthors(a.data.users.filter(u => u.role === 'author'))
     setLoading(false)
   }

@@ -151,16 +151,42 @@ const seed = async () => {
   console.log(`✍️  ${AUTHORS_DATA.length} auteurs`)
 
   // Documents
+  // ─── Mapping PDFs réels → documents ─────────────────────────────────
+  // Noms exacts des fichiers dans server/uploads/pdfs/
+  const PDF_MAP = {
+    'Python pour la Data Science':               'TP3_Big Data.pdf',
+    'React & Node.js — Full Stack':              'chapitre1_1.pdf',
+    'Algorithmes & Structures — C/C++':          'chapitre_2.pdf',
+    'Base de Données SQL — Cours & TP':          'chapitre3_2025.pdf',
+    'Cybersécurité — Fondamentaux':              'chapitre4_2025.pdf',
+    'Algèbre Linéaire — Cours Complet L1/L2':   'chapitre5_2025.pdf',
+    'Probabilités et Statistiques — Exercices':  'TP5_M1GL.pdf',
+    'Analyse Mathématique — L1 Cours Complet':   'chapitre1_1.pdf',
+    'Économie Algérienne 2024 — Rapport':        'History of computers (3).pdf',
+    'Business Plan — Guide Algérie 2025':        'Crystal Method for Appliance E-commerce.pdf',
+    'Marketing Digital — Réseaux Sociaux':       'chapitre_2.pdf',
+    'Comptabilité — Plan Comptable Algérien':    'chapitre3_2025.pdf',
+    'Figma — UI/UX Design de A à Z':            'chapitre4_2025.pdf',
+    'Adobe Photoshop — Guide Complet':           'chapitre5_2025.pdf',
+    'Anatomie Humaine — Atlas Illustré':         'TP5_M1GL.pdf',
+    'Pharmacologie Générale — Bases':            'chapitre1_1.pdf',
+    'Droit Commercial Algérien — Annoté':        'Crystal Method for Appliance E-commerce.pdf',
+    'Pack 50 CV Professionnels — Word':          'TP3_Big Data.pdf',
+    'Pack Business Plan — 20 Templates Excel':   'History of computers (3).pdf',
+  }
+
+  const DEFAULT_PDF = 'chapitre1_1.pdf'
+
   const docDocs = []
   for (const d of DOCS_DATA) {
     const author = authorDocs[d.authorIdx] || authorDocs[0]
     const doc = await Document.create({
       title: d.title, description: d.desc, category: d.cat, tags: d.tags,
       isFree: d.isFree, price: d.price, pageCount: d.pages, language:'fr',
-      coverUrl: COVERS[d.cover] || '', pdfUrl: 'demo://no-file',  // placeholder — remplacer par vrai fichier
+      coverUrl: COVERS[d.cover] || '', pdfUrl: `/uploads/pdfs/${PDF_MAP[d.title] || DEFAULT_PDF}`,
       authorId: author._id, authorName: author.name, authorAvatar: author.avatar||'',
       views: d.views, purchases: d.purchases, downloads: Math.round(d.views*0.3),
-      isFeatured: d.featured, status:'published',
+      isFeatured: d.featured, status:'published', fileType:'PDF', domain: d.cat,
       aiSummary: `Ce document traite de ${d.cat}. ${d.desc}`,
       aiKeyPoints: [`Introduction à ${d.cat}`, 'Méthodologie et exemples', 'Exercices pratiques', 'Synthèse et conclusion'],
       aiKeywords: d.tags,

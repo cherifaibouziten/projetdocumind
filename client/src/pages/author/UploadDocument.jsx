@@ -72,23 +72,6 @@ export default function UploadDocument() {
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-3xl">
-      {/* Config reminder banner */}
-      {showConfigGuide && (
-        <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
-          <span className="text-amber-400 text-lg flex-shrink-0">⚠️</span>
-          <div className="flex-1 text-sm">
-            <p className="font-semibold text-amber-300 mb-1">Configuration requise pour l'upload</p>
-            <p className="text-amber-200/60 leading-relaxed">
-              Sans clés <strong>Cloudinary</strong> dans <code className="bg-amber-500/10 px-1 rounded">.env</code>, le PDF sera enregistré en <em>mode démo</em> (sans stockage réel).
-              Sans clé <strong>OpenAI</strong>, le résumé IA utilisera un texte générique.
-            </p>
-            <p className="text-amber-200/40 text-xs mt-1">
-              Voir README.md pour les instructions de configuration.
-            </p>
-          </div>
-          <button onClick={() => setShowConfigGuide(false)} className="text-amber-400/50 hover:text-amber-400 flex-shrink-0">✕</button>
-        </div>
-      )}
       <div className="mb-8 flex items-center gap-3">
         <button type="button" onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-white/5 text-white/40 hover:text-white/70 transition-colors flex-shrink-0">
           <ArrowLeft className="w-5 h-5" />

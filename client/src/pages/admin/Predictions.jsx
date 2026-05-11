@@ -191,15 +191,7 @@ export default function AdminPredictions() {
                     </div>
                   </div>
                 )}
-                {doc.season && (
-                  <div className="glass-card p-3 flex items-center gap-2">
-                    <span className="text-lg">{doc.season === 'Été' ? '☀️' : doc.season === 'Hiver' ? '❄️' : doc.season === 'Printemps' ? '🌸' : '🍂'}</span>
-                    <div>
-                      <p className="text-xs text-white/40">Saison actuelle</p>
-                      <p className="text-sm text-white font-medium">{doc.season} (boost ×{doc.seasonBoost?.toFixed(1) || 1})</p>
-                    </div>
-                  </div>
-                )}
+
               </div>
             </div>
           )}
