@@ -103,8 +103,9 @@ jobs:
         working-directory: ./client
         run: |
           npm install
-          npm run build
-          npm run preview -- --port 5173 &
+          chmod +x node_modules/.bin/vite
+          node_modules/.bin/vite build
+          node_modules/.bin/vite preview --port 5173 --host &
           sleep 5
 
       # ── ÉTAPE 5 : Permissions pour le conteneur ZAP ─────────────
