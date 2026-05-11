@@ -99,12 +99,12 @@ jobs:
       # "npm run build" → Compile React en fichiers statiques
       # "npm run preview" → Sert les fichiers compilés (plus stable
       #   que le serveur de dev pour les tests automatisés)
-      - name: "Étape 4 — Build et démarrage du Frontend React (port 5173)"
+- name: "Étape 4 — Build et démarrage du Frontend React (port 5173)"
         working-directory: ./client
         run: |
           npm install
-          npm run build
-          npm run preview -- --port 5173 &
+          npx vite build
+          npx vite preview --port 5173 &
           sleep 5
 
       # ── ÉTAPE 5 : Permissions pour le conteneur ZAP ─────────────
