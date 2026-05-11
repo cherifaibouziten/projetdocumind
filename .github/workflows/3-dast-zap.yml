@@ -36,13 +36,13 @@ jobs:
           node index.js &
           sleep 5
 
-      - name: Build et demarrage Frontend port 5173
-        working-directory: ./client
-        run: |
-          npm install
-          npx --yes vite build
-          npx --yes vite preview --port 5173 &
-          sleep 5
+- name: Build et demarrage Frontend port 5173
+  working-directory: ./client
+  run: |
+    npm install
+    npx vite build &
+    npx vite preview --port 5173 &
+    sleep 55
 
       - name: Permissions ZAP
         run: chmod 777 $GITHUB_WORKSPACE
