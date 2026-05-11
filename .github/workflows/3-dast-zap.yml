@@ -1,30 +1,89 @@
-name: DocuMind DAST ZAP
+name: "DocuMind | JOB 3 - DAST : Analyse Dynamique (OWASP ZAP)"
+
+# ================================================================
+# QU'EST-CE QUE LE DAST ?
+# ================================================================
+# DAST = Dynamic Application Security Testing (Test de Sécurité
+# Dynamique). Contrairement au SAST qui lit le code sans
+# l'exécuter, le DAST ATTAQUE votre application pendant qu'elle
+# TOURNE, exactement comme le ferait un vrai hacker.
+#
+# OWASP ZAP (Zed Attack Proxy) va :
+#   1. Démarrer votre application DocuMind (backend + frontend)
+#   2. Explorer automatiquement toutes les pages et routes API
+#   3. Envoyer des requêtes malveillantes pour tester les défenses
+#   4. Générer un rapport des vulnérabilités trouvées
+#
+# Pour DocuMind v3, ZAP va tester notamment :
+#   • POST /api/auth/login       → Injection, brute-force
+#   • GET  /api/documents        → Accès non autorisé
+#   • POST /api/documents        → Upload de fichiers malveillants
+#   • GET  /api/pdf/:id          → Accès à des PDF payants sans achat
+#   • POST /api/orders           → Manipulation des paiements Stripe
+#   • GET  /api/admin/*          → Accès admin sans être admin
+#
+# Vulnérabilités typiques détectées par DAST :
+#   ✗ En-têtes HTTP de sécurité manquants (CSP, HSTS, X-Frame)
+#   ✗ Sessions JWT non expirées ou mal configurées
+#   ✗ Routes admin accessibles sans authentification
+#   ✗ Informations sensibles exposées dans les réponses API
+#   ✗ CORS mal configuré (toutes les origines acceptées)
+#
+# ⚠️ Secret GitHub requis :
+#   Allez dans Settings > Secrets and variables > Actions
+#   Ajoutez : ZAP_AUTH_TOKEN = (votre JWT obtenu après login)
+#   Pour obtenir le JWT : POST /api/auth/login avec admin@documind.com
+# ================================================================
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
 
 jobs:
   dast-scan:
+    name: "[DAST] Analyse Dynamique OWASP ZAP — Application Live"
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+    permissions:
+      issues: write     # Autorise ZAP à créer un ticket GitHub si faille trouvée
+      contents: read
+
+    steps:
+
+      # ── ÉTAPE 1 : Récupération du code ──────────────────────────
+      # Clone le dépôt complet : on a besoin du code pour
+      # démarrer l'application avant que ZAP puisse l'attaquer.
+      - name: "Étape 1 — Récupération du code source"
+        uses: actions/checkout@v4
+
+      # ── ÉTAPE 2 : Installation de Node.js ───────────────────────
+      # Le Runner GitHub est une machine Ubuntu vierge.
+      # On installe Node.js 20 pour pouvoir lancer
+      # le backend Express et le frontend Vite.
+      - name: "Étape 2 — Installation de Node.js 20"
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Demarrage Backend
+      # ── ÉTAPE 3 : Démarrage du Backend ──────────────────────────
+      # On installe les dépendances du serveur Express et on le
+      # démarre en arrière-plan (&) sur le port 4000.
+      #
+      # Variables d'environnement CI :
+      #   MONGODB_URI  → base de données de test (pas de prod !)
+      #   JWT_SECRET   → secret de test uniquement pour le CI
+      #   NODE_ENV     → "development" pour activer tous les logs
+      #
+      # "sleep 5" → On attend 5 secondes que le serveur démarre
+      # complètement avant de passer à l'étape suivante.
+      - name: "Étape 3 — Démarrage du Backend Express (port 4000)"
         working-directory: ./server
         env:
           PORT: 4000
           MONGODB_URI: mongodb://localhost:27017/documind_test
-          JWT_SECRET: ci_jwt_secret
+          JWT_SECRET: ci_jwt_secret_for_testing_only
           CLIENT_URL: http://localhost:5173
           NODE_ENV: development
         run: |
@@ -32,19 +91,141 @@ jobs:
           node index.js &
           sleep 5
 
-      - name: Demarrage Frontend
+      # ── ÉTAPE 4 : Démarrage du Frontend ─────────────────────────
+      # On build le frontend React (vite build) puis on le sert
+      # en mode preview sur le port 5173.
+      # C'est cette URL (http://localhost:5173) que ZAP va scanner.
+      #
+      # "npm run build" → Compile React en fichiers statiques
+      # "npm run preview" → Sert les fichiers compilés (plus stable
+      #   que le serveur de dev pour les tests automatisés)
+      - name: "Étape 4 — Build et démarrage du Frontend React (port 5173)"
         working-directory: ./client
         run: |
           npm install
-          npx --yes vite build
-          npx --yes vite preview --port 5173 &
+          npm run build
+          npm run preview -- --port 5173 &
           sleep 5
 
-      - name: Permissions ZAP
+      # ── ÉTAPE 5 : Permissions pour le conteneur ZAP ─────────────
+      # OWASP ZAP tourne dans son propre conteneur Docker.
+      # Il a besoin d'écrire son rapport dans le workspace GitHub.
+      # Cette commande donne les droits d'écriture nécessaires.
+      # Sans cette étape : erreur "Permission denied" dans les logs.
+      - name: "Étape 5 — Permissions d'écriture pour le conteneur ZAP"
         run: chmod 777 $GITHUB_WORKSPACE
 
-      - name: Scan ZAP
+      # ── ÉTAPE 6 : Scan OWASP ZAP ────────────────────────────────
+      # ZAP effectue un "Baseline Scan" :
+      #   → Il explore l'application passivement d'abord
+      #   → Puis envoie des requêtes d'attaque ciblées
+      #   → Génère un rapport HTML et JSON
+      #
+      # Variables d'environnement ZAP :
+      #   ZAP_AUTH_HEADER       → Nom de l'en-tête d'auth ("Authorization")
+      #   ZAP_AUTH_HEADER_VALUE → JWT stocké dans GitHub Secrets
+      #   ZAP_AUTH_HEADER_SITE  → URL où envoyer le header d'auth
+      #
+      # Paramètres :
+      #   target       → URL de l'application à scanner
+      #   fail_action  → false = ne fait pas échouer le pipeline
+      #                  (mode observation, passer à true en prod)
+      - name: "Étape 6 — Scan OWASP ZAP (Authentifié avec JWT)"
         uses: zaproxy/action-baseline@v0.14.0
+        env:
+          ZAP_AUTH_HEADER: "Authorization"
+          ZAP_AUTH_HEADER_VALUE: "${{ secrets.ZAP_AUTH_TOKEN }}"
+          ZAP_AUTH_HEADER_SITE: "http://localhost:5173"
         with:
-          target: http://localhost:5173
+          target: 'http://localhost:5173'
           fail_action: false
+
+# ================================================================
+# COMMENT LIRE LES RÉSULTATS ?
+# ================================================================
+#
+# ── CAS 1 : AUCUNE ALERTE (✅ Succès) ───────────────────────────
+#   Les logs affichent à la fin du scan :
+#   ┌──────────────────────────────────────────────────────────────┐
+#   │  PASS: No alerts found                                       │
+#   │  PASS: X URLs scanned, 0 alerts                              │
+#   └──────────────────────────────────────────────────────────────┘
+#   → Aucune vulnérabilité dynamique détectée.
+#   → La pastille est VERTE dans GitHub Actions.
+#   → Un rapport HTML vide est tout de même généré en artifact.
+#
+# ── CAS 2 : ALERTES DÉTECTÉES (⚠️ Avertissement) ────────────────
+#   Les logs affichent un résumé et un rapport est créé.
+#   ZAP classe ses alertes en 4 niveaux :
+#
+#   🔴 HIGH (Élevé) — Action immédiate requise
+#   ┌──────────────────────────────────────────────────────────────┐
+#   │ Alert: Anti-CSRF Tokens Check                                │
+#   │ URL  : http://localhost:5173/api/orders                      │
+#   │ Risk : High                                                  │
+#   │ Desc : Les formulaires ne contiennent pas de token CSRF.     │
+#   │        Un attaquant peut forcer un utilisateur connecté à    │
+#   │        passer une commande à son insu.                       │
+#   │ Fix  : Implémenter csurf ou utiliser SameSite=Strict         │
+#   └──────────────────────────────────────────────────────────────┘
+#
+#   🟠 MEDIUM (Moyen) — À corriger dans le sprint suivant
+#   ┌──────────────────────────────────────────────────────────────┐
+#   │ Alert: Missing Security Headers                              │
+#   │ URL  : http://localhost:5173                                 │
+#   │ Risk : Medium                                                │
+#   │ Desc : L'en-tête "Content-Security-Policy" est absent.       │
+#   │        Permet des attaques XSS via injection de scripts.     │
+#   │ Fix  : Ajouter dans Express :                                │
+#   │        app.use(helmet()) — bibliothèque npm "helmet"         │
+#   └──────────────────────────────────────────────────────────────┘
+#
+#   🟡 LOW (Faible) — À planifier
+#   ┌──────────────────────────────────────────────────────────────┐
+#   │ Alert: X-Content-Type-Options Header Missing                 │
+#   │ URL  : http://localhost:4000/api/documents                   │
+#   │ Risk : Low                                                   │
+#   │ Desc : Le navigateur peut interpréter le type MIME           │
+#   │        incorrectement (MIME sniffing).                       │
+#   │ Fix  : Ajouter l'en-tête :                                   │
+#   │        res.setHeader('X-Content-Type-Options', 'nosniff')    │
+#   └──────────────────────────────────────────────────────────────┘
+#
+#   🔵 INFO (Informatif) — Pas dangereux, à surveiller
+#   ┌──────────────────────────────────────────────────────────────┐
+#   │ Alert: Modern Web Application                                │
+#   │ Info : ZAP a détecté une SPA (Single Page App) React.       │
+#   │        Le scan dynamique peut être incomplet car les routes  │
+#   │        sont gérées côté client (React Router).               │
+#   └──────────────────────────────────────────────────────────────┘
+#
+# ── CAS 3 : ERREUR DE DÉMARRAGE ─────────────────────────────────
+#   Si le backend ou le frontend ne démarre pas, ZAP affiche :
+#   "Unable to connect to http://localhost:5173"
+#   Causes possibles :
+#   → MongoDB non démarré (le CI n'a pas de service MongoDB)
+#   → Port déjà utilisé
+#   → Erreur dans le code au démarrage (regardez les logs des
+#     étapes 3 et 4 pour voir l'erreur Node.js exacte)
+#   Fix : Ajouter un service MongoDB dans le job :
+#         services:
+#           mongodb:
+#             image: mongo:6
+#             ports: ['27017:27017']
+#
+# ── OÙ TROUVER LE RAPPORT COMPLET ? ─────────────────────────────
+#   ZAP génère un rapport HTML complet disponible en "Artifact" :
+#   Actions > votre run > section "Artifacts" > "zap_scan"
+#   → Téléchargez-le et ouvrez-le dans un navigateur pour voir
+#     toutes les alertes avec leur description complète et les
+#     captures des requêtes/réponses HTTP concernées.
+#
+# ── ACTION REQUISE ───────────────────────────────────────────────
+#   1. Téléchargez le rapport ZAP (Artifact)
+#   2. Triez les alertes par niveau : HIGH en priorité
+#   3. Pour chaque alerte HIGH/MEDIUM :
+#      → Lisez la description et l'URL concernée
+#      → Corrigez dans le code (ex: ajouter helmet(), valider JWT)
+#      → Commitez → le pipeline re-teste automatiquement
+#   4. Vérifiez que l'alerte a disparu du prochain rapport
+# ================================================================
