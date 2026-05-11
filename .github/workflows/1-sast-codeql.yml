@@ -1,0 +1,121 @@
+name: "DocuMind | JOB 1 - SAST : Analyse Statique du Code (CodeQL)"
+
+# ================================================================
+# QU'EST-CE QUE LE SAST ?
+# ================================================================
+# SAST = Static Application Security Testing (Test de Sécurité
+# Statique). L'outil LIT votre code SOURCE sans l'exécuter,
+# comme un relecteur expert qui cherche des erreurs.
+#
+# Pour DocuMind, CodeQL va analyser :
+#   - server/controllers/index.js  → injections, logique métier
+#   - server/middleware/auth.js    → failles d'authentification JWT
+#   - server/routes/index.js       → routes non protégées
+#   - client/src/                  → failles XSS côté React
+#
+# Vulnérabilités typiques détectées :
+#   ✗ Secrets codés en dur (JWT_SECRET, clés API dans le code)
+#   ✗ Injections NoSQL (requêtes Mongoose non filtrées)
+#   ✗ Mauvaise validation des entrées utilisateur
+#   ✗ Failles XSS dans le rendu React (dangerouslySetInnerHTML)
+# ================================================================
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  sast-scan:
+    name: "[SAST] Analyse Statique CodeQL — JavaScript/Node.js/React"
+    runs-on: ubuntu-latest
+
+    # ── Permissions nécessaires ──────────────────────────────────
+    # security-events: write → Permet à CodeQL de publier ses
+    #   résultats dans l'onglet "Security > Code scanning alerts"
+    #   de votre dépôt GitHub. OBLIGATOIRE pour CodeQL.
+    # actions: read          → Lire les métadonnées du workflow.
+    # contents: read         → Lire le code source du dépôt.
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+
+      # ── ÉTAPE 1 : Récupération du code ──────────────────────────
+      # Clone votre dépôt GitHub dans la machine virtuelle (Runner).
+      # Sans cette étape, le Runner ne connaît pas votre code.
+      # actions/checkout@v4 est l'action officielle de GitHub.
+      - name: "Étape 1 — Récupération du code source"
+        uses: actions/checkout@v4
+
+      # ── ÉTAPE 2 : Initialisation de CodeQL ──────────────────────
+      # Configure le moteur CodeQL pour analyser du JavaScript.
+      # "javascript" couvre aussi TypeScript, Node.js et React JSX.
+      # CodeQL va créer une BASE DE DONNÉES interne de votre code
+      # (un graphe de toutes les fonctions, variables, flux de données).
+      - name: "Étape 2 — Initialisation de CodeQL (langage : JavaScript)"
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+
+      # ── ÉTAPE 3 : Exécution de l'analyse ────────────────────────
+      # CodeQL parcourt la base de données créée à l'étape 2 et
+      # exécute des centaines de requêtes de sécurité (appelées
+      # "queries") pour détecter des patterns dangereux.
+      - name: "Étape 3 — Exécution de l'analyse CodeQL"
+        uses: github/codeql-action/analyze@v3
+
+# ================================================================
+# COMMENT LIRE LES RÉSULTATS ?
+# ================================================================
+#
+# Rendez-vous sur GitHub : onglet "Security" > "Code scanning alerts"
+#
+# ── CAS 1 : AUCUNE ALERTE (✅ Succès) ───────────────────────────
+#   Le job affiche une pastille VERTE dans l'onglet "Actions".
+#   "No code scanning alerts" dans l'onglet Security.
+#   → Votre code ne contient pas de vulnérabilités connues de
+#     CodeQL. Bonne pratique maintenue.
+#
+# ── CAS 2 : ALERTES DÉTECTÉES (⚠️ Avertissement ou ❌ Échec) ───
+#   Le job peut rester VERT (CodeQL ne bloque pas par défaut)
+#   mais des alertes apparaissent dans Security > Code scanning.
+#
+#   Chaque alerte contient :
+#     • Titre       : ex. "SQL/NoSQL Injection"
+#     • Fichier     : ex. server/controllers/index.js, ligne 142
+#     • Sévérité    : Critical / High / Medium / Low
+#     • Description : Explication de la faille
+#     • Flux        : Chemin des données de l'entrée à la faille
+#
+#   Exemples d'alertes possibles dans DocuMind :
+#   ┌─────────────────────────────────────────────────────────────┐
+#   │ ⚠ "Hard-coded credentials"                                  │
+#   │   Fichier : server/.env ou server/index.js                  │
+#   │   Cause   : JWT_SECRET ou clé API directement dans le code  │
+#   │   Fix     : Utiliser process.env.JWT_SECRET via GitHub      │
+#   │             Secrets (jamais de valeur en dur dans le code)  │
+#   ├─────────────────────────────────────────────────────────────┤
+#   │ ⚠ "NoSQL Injection"                                         │
+#   │   Fichier : server/controllers/index.js                     │
+#   │   Cause   : Données utilisateur passées directement dans    │
+#   │             une requête Mongoose sans validation             │
+#   │   Fix     : Utiliser mongoose-sanitize ou valider avec Joi  │
+#   ├─────────────────────────────────────────────────────────────┤
+#   │ ⚠ "Missing token validation"                               │
+#   │   Fichier : server/middleware/auth.js                       │
+#   │   Cause   : Le JWT n'est pas vérifié correctement           │
+#   │   Fix     : Toujours utiliser jwt.verify() avec secret fort │
+#   └─────────────────────────────────────────────────────────────┘
+#
+# ── ACTION REQUISE ───────────────────────────────────────────────
+#   Pour chaque alerte :
+#   1. Cliquez dessus dans Security > Code scanning alerts
+#   2. Lisez le "Show paths" pour comprendre le flux de la faille
+#   3. Corrigez le code dans le fichier indiqué
+#   4. Faites un nouveau commit → le pipeline re-scan automatiquement
+#   5. L'alerte disparaît si la faille est résolue
+# ================================================================

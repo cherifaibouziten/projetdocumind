@@ -1,0 +1,161 @@
+name: "DocuMind | JOB 2 - SCA : Analyse des Dépendances (Trivy)"
+
+# ================================================================
+# QU'EST-CE QUE LE SCA ?
+# ================================================================
+# SCA = Software Composition Analysis (Analyse de Composition
+# Logicielle). L'outil examine vos fichiers package.json pour
+# lister toutes les bibliothèques externes que vous utilisez,
+# puis vérifie si ces bibliothèques ont des vulnérabilités
+# connues et publiées publiquement (appelées CVE).
+#
+# CVE = Common Vulnerabilities and Exposures
+#   → Une base de données mondiale des failles de sécurité.
+#   → Chaque faille a un identifiant : ex. CVE-2024-29041
+#   → Chaque CVE a un score CVSS (0 à 10) : plus c'est haut,
+#     plus c'est dangereux.
+#
+# Pour DocuMind v3, Trivy va scanner :
+#
+#   server/package.json — dépendances critiques :
+#     • express       ^4.21.2  → Serveur HTTP principal
+#     • mongoose      ^8.9.5   → ORM MongoDB
+#     • jsonwebtoken  ^9.0.2   → Authentification JWT
+#     • multer        ^1.4.5   → Upload fichiers PDF
+#     • stripe        ^17.4.0  → Paiements
+#     • openai        ^4.77.0  → IA / résumés
+#     • pdf-parse     ^1.1.1   → Lecture PDF (ancienne version !)
+#
+#   client/package.json — dépendances front :
+#     • react          ^18.3.1
+#     • axios          ^1.6.0   → Appels API
+#     • @stripe/...            → Paiements côté client
+#     • react-pdf      ^9.2.1
+#     • pdfjs-dist     ^4.9.155
+# ================================================================
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  sca-scan:
+    name: "[SCA] Analyse des Dépendances Trivy — Backend & Frontend"
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ── ÉTAPE 1 : Récupération du code ──────────────────────────
+      # Clone le dépôt pour accéder aux fichiers package.json
+      # de server/ et client/ que Trivy va analyser.
+      - name: "Étape 1 — Récupération du code source"
+        uses: actions/checkout@v4
+
+      # ── ÉTAPE 2 : SCA Backend (server/) ─────────────────────────
+      # Trivy analyse server/package.json et son package-lock.json.
+      # Il construit l'arbre complet des dépendances (directes ET
+      # transitives) et cherche des CVE pour chacune.
+      #
+      # Paramètres expliqués :
+      #   scan-type: 'fs'          → Scan du système de fichiers
+      #   scan-ref: './server'     → Dossier à scanner
+      #   format: 'table'          → Affichage en tableau dans les logs
+      #   exit-code: '0'           → Ne bloque pas le pipeline si
+      #                              des CVE sont trouvés (mode observation)
+      #                              Mettre '1' pour bloquer en production
+      #   ignore-unfixed: true     → Ignore les CVE sans correctif
+      #                              disponible (on ne peut rien faire)
+      #   vuln-type: 'library'     → Analyse uniquement les bibliothèques
+      #   severity: 'HIGH,CRITICAL'→ N'affiche que les failles graves
+      - name: "Étape 2 — SCA Backend : Scan de server/package.json"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './server'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'library'
+          severity: 'HIGH,CRITICAL'
+
+      # ── ÉTAPE 3 : SCA Frontend (client/) ────────────────────────
+      # Même analyse pour le frontend React/Vite.
+      # Trivy analyse client/package.json : react, axios, stripe-js,
+      # react-pdf, pdfjs-dist, framer-motion, etc.
+      # Les bibliothèques front peuvent aussi avoir des CVE qui
+      # permettent des attaques XSS ou des fuites de données.
+      - name: "Étape 3 — SCA Frontend : Scan de client/package.json"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './client'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'library'
+          severity: 'HIGH,CRITICAL'
+
+# ================================================================
+# COMMENT LIRE LES RÉSULTATS ?
+# ================================================================
+#
+# Les résultats s'affichent dans les LOGS du job dans GitHub Actions.
+# Cliquez sur "Actions" > votre run > "SCA Backend" ou "SCA Frontend"
+#
+# ── CAS 1 : AUCUNE VULNÉRABILITÉ (✅ Succès) ────────────────────
+#   Les logs affichent :
+#   ┌───────────────────────────────────────────────┐
+#   │  No vulnerabilities found in ./server         │
+#   └───────────────────────────────────────────────┘
+#   → Toutes vos dépendances sont à jour et sans CVE connu.
+#   → La pastille est VERTE dans l'onglet Actions.
+#
+# ── CAS 2 : VULNÉRABILITÉS DÉTECTÉES (⚠️ Avertissement) ────────
+#   Trivy affiche un tableau dans les logs, par exemple :
+#
+#   ┌────────────────┬────────────────┬──────────┬───────────────────┬────────────────────┐
+#   │    Library     │ Vulnerability  │ Severity │ Installed Version │   Fixed Version    │
+#   ├────────────────┼────────────────┼──────────┼───────────────────┼────────────────────┤
+#   │ pdf-parse      │ CVE-2024-XXXX  │ HIGH     │ 1.1.1             │ 1.1.2              │
+#   │ multer         │ CVE-2023-XXXX  │ CRITICAL │ 1.4.5-lts.1       │ 2.0.0              │
+#   │ pdfjs-dist     │ CVE-2024-YYYY  │ HIGH     │ 4.9.155           │ 4.10.0             │
+#   └────────────────┴────────────────┴──────────┴───────────────────┴────────────────────┘
+#
+#   Chaque colonne signifie :
+#     • Library           : La bibliothèque vulnérable
+#     • Vulnerability     : L'identifiant CVE (cherchable sur nvd.nist.gov)
+#     • Severity          : CRITICAL > HIGH > MEDIUM > LOW
+#     • Installed Version : La version que vous utilisez actuellement
+#     • Fixed Version     : La version corrigée à installer
+#
+# ── CAS 3 : TOUTES LES CVE SONT "UNFIXED" ───────────────────────
+#   Trivy affiche :
+#   "No fixed version available"
+#   → Il n'existe pas encore de correctif publié.
+#   → Vous ne pouvez pas mettre à jour pour l'instant.
+#   → Documentez-le et surveillez régulièrement.
+#
+# ── ACTION REQUISE ───────────────────────────────────────────────
+#   Pour corriger une CVE avec une Fixed Version disponible :
+#
+#   1. Backend — Mettez à jour la bibliothèque vulnérable :
+#      cd server
+#      npm install pdf-parse@latest   ← exemple
+#      npm audit fix                  ← corrige automatiquement
+#
+#   2. Frontend :
+#      cd client
+#      npm install pdfjs-dist@latest  ← exemple
+#      npm audit fix
+#
+#   3. Commitez le nouveau package-lock.json
+#   4. Le pipeline re-scanne → le tableau doit être vide
+#
+# ── OUTIL COMPLÉMENTAIRE ─────────────────────────────────────────
+#   Vous pouvez aussi utiliser Dependabot (natif GitHub) :
+#   GitHub crée automatiquement des Pull Requests pour mettre
+#   à jour les bibliothèques vulnérables.
+#   Activez dans : Settings > Security > Dependabot alerts
+# ================================================================
