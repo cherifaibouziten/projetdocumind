@@ -1,4 +1,4 @@
-name: "DocuMind | JOB 3 - DAST : Analyse Dynamique (OWASP ZAP)"
+name: DocuMind DAST ZAP
 
 on:
   push:
@@ -8,22 +8,22 @@ on:
 
 jobs:
   dast-scan:
-    name: "[DAST] Analyse Dynamique OWASP ZAP"
+    name: Analyse Dynamique OWASP ZAP
     runs-on: ubuntu-latest
     permissions:
       issues: write
       contents: read
 
     steps:
-      - name: "Etape 1 - Recuperation du code"
+      - name: Recuperation du code
         uses: actions/checkout@v4
 
-      - name: "Etape 2 - Installation de Node.js 20"
+      - name: Installation Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: "Etape 3 - Demarrage du Backend (port 4000)"
+      - name: Demarrage Backend port 4000
         working-directory: ./server
         env:
           PORT: 4000
@@ -36,7 +36,7 @@ jobs:
           node index.js &
           sleep 5
 
-      - name: "Etape 4 - Build et demarrage du Frontend (port 5173)"
+      - name: Build et demarrage Frontend port 5173
         working-directory: ./client
         run: |
           npm install
@@ -44,15 +44,15 @@ jobs:
           npx --yes vite preview --port 5173 &
           sleep 5
 
-      - name: "Etape 5 - Permissions pour le conteneur ZAP"
+      - name: Permissions ZAP
         run: chmod 777 $GITHUB_WORKSPACE
 
-      - name: "Etape 6 - Scan OWASP ZAP"
+      - name: Scan OWASP ZAP
         uses: zaproxy/action-baseline@v0.14.0
         env:
-          ZAP_AUTH_HEADER: "Authorization"
-          ZAP_AUTH_HEADER_VALUE: "${{ secrets.ZAP_AUTH_TOKEN }}"
-          ZAP_AUTH_HEADER_SITE: "http://localhost:5173"
+          ZAP_AUTH_HEADER: Authorization
+          ZAP_AUTH_HEADER_VALUE: ${{ secrets.ZAP_AUTH_TOKEN }}
+          ZAP_AUTH_HEADER_SITE: http://localhost:5173
         with:
-          target: 'http://localhost:5173'
+          target: http://localhost:5173
           fail_action: false
